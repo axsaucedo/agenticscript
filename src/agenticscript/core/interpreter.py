@@ -51,6 +51,8 @@ class AgentVal(AgenticScriptValue):
         self.status = "idle"  # idle, active, error
         self.properties = {}
         self.tools = []
+        self.assigned_tools = {}  # tool_name -> tool_instance mapping
+        self.message_queue = []  # simple queue for async messages
 
         # Apply configuration
         for key, value in config.items():
@@ -64,6 +66,8 @@ class AgentVal(AgenticScriptValue):
             return self.model
         elif name == "name":
             return self.name
+        elif name == "tools":
+            return list(self.assigned_tools.keys())
         else:
             return self.properties.get(name)
 
@@ -74,6 +78,134 @@ class AgentVal(AgenticScriptValue):
             raise RuntimeError(f"Cannot modify system property '{name}'")
         else:
             self.properties[name] = value
+
+    def ask(self, message: str, timeout: float = None) -> str:
+        """Send a synchronous message to this agent and wait for response.
+
+        Args:
+            message: Message to send
+            timeout: Optional timeout in seconds
+
+        Returns:
+            Response string from the agent
+        """
+        # Mock implementation for Phase 2
+        # In a real implementation, this would route through the message bus
+        import time
+        time.sleep(0.01)  # Simulate processing time
+
+        # Update status during processing
+        old_status = self.status
+        self.status = "processing"
+
+        # Mock response based on message content
+        if "error" in message.lower():
+            response = f"Error handling: {message}"
+        elif "status" in message.lower():
+            response = f"Agent {self.name} status: {old_status}"
+        elif "hello" in message.lower():
+            response = f"Hello from {self.name}!"
+        else:
+            response = f"Agent {self.name} processed: {message}"
+
+        # Restore status
+        self.status = old_status
+        return response
+
+    def tell(self, message: str) -> None:
+        """Send an asynchronous message to this agent.
+
+        Args:
+            message: Message to send
+        """
+        # Mock implementation - just add to message queue
+        import datetime
+        self.message_queue.append({
+            "message": message,
+            "timestamp": datetime.datetime.now(),
+            "sender": "system"  # Will be updated when message bus is implemented
+        })
+
+    def has_tool(self, tool_name: str) -> bool:
+        """Check if this agent has access to a specific tool.
+
+        Args:
+            tool_name: Name of the tool to check
+
+        Returns:
+            True if agent has the tool, False otherwise
+        """
+        return tool_name in self.assigned_tools
+
+    def execute_tool(self, tool_name: str, *args, **kwargs) -> Any:
+        """Execute a tool with given arguments.
+
+        Args:
+            tool_name: Name of the tool to execute
+            *args: Positional arguments for tool execution
+            **kwargs: Keyword arguments for tool execution
+
+        Returns:
+            Tool execution result
+
+        Raises:
+            RuntimeError: If tool is not available to this agent
+        """
+        if not self.has_tool(tool_name):
+            raise RuntimeError(f"Agent {self.name} does not have access to tool '{tool_name}'")
+
+        tool_instance = self.assigned_tools[tool_name]
+
+        # Update agent status during tool execution
+        old_status = self.status
+        self.status = "using_tool"
+
+        try:
+            result = tool_instance.execute(*args, **kwargs)
+            return result
+        finally:
+            self.status = old_status
+
+    def assign_tool(self, tool_name: str, tool_instance: Any) -> None:
+        """Assign a tool instance to this agent.
+
+        Args:
+            tool_name: Name of the tool
+            tool_instance: Tool instance to assign
+        """
+        self.assigned_tools[tool_name] = tool_instance
+
+    def remove_tool(self, tool_name: str) -> bool:
+        """Remove a tool from this agent.
+
+        Args:
+            tool_name: Name of the tool to remove
+
+        Returns:
+            True if tool was removed, False if tool wasn't assigned
+        """
+        if tool_name in self.assigned_tools:
+            del self.assigned_tools[tool_name]
+            return True
+        return False
+
+    def get_pending_messages(self) -> list:
+        """Get all pending messages in the agent's queue.
+
+        Returns:
+            List of pending messages
+        """
+        return self.message_queue.copy()
+
+    def clear_messages(self) -> int:
+        """Clear all pending messages.
+
+        Returns:
+            Number of messages cleared
+        """
+        count = len(self.message_queue)
+        self.message_queue.clear()
+        return count
 
     def __str__(self):
         return f"Agent({self.name}, {self.model}, {self.status})"
@@ -209,7 +341,6 @@ class AgenticScriptInterpreter:
 
     def evaluate_method_call(self, expr: ast.MethodCall) -> AgenticScriptValue:
         """Evaluate method call: object.method(args)"""
-        # For MVP, we'll implement basic method calls
         obj_name = expr.object
         method_name = expr.method
 
@@ -219,17 +350,52 @@ class AgenticScriptInterpreter:
         obj = self.globals[obj_name]
 
         if isinstance(obj, AgentVal):
+            # Evaluate arguments
+            args = [self.evaluate_expression(arg) for arg in expr.arguments]
+
             if method_name == "ask":
-                # Mock implementation for now
-                args = [self.evaluate_expression(arg) for arg in expr.arguments]
-                query = args[0].value if args else "empty query"
-                return StringVal(f"Mock response to: {query}")
+                # Synchronous communication
+                if len(args) < 1:
+                    raise InterpreterError("ask() requires at least 1 argument: message")
+
+                message = args[0].value
+                timeout = args[1].value if len(args) > 1 else None
+
+                response = obj.ask(message, timeout)
+                return StringVal(response)
+
             elif method_name == "tell":
-                # Mock implementation for now
-                args = [self.evaluate_expression(arg) for arg in expr.arguments]
-                message = args[0].value if args else "empty message"
-                print(f"Agent {obj_name} received message: {message}")
+                # Asynchronous messaging
+                if len(args) < 1:
+                    raise InterpreterError("tell() requires 1 argument: message")
+
+                message = args[0].value
+                obj.tell(message)
                 return StringVal("message sent")
+
+            elif method_name == "has_tool":
+                # Tool availability check
+                if len(args) < 1:
+                    raise InterpreterError("has_tool() requires 1 argument: tool_name")
+
+                tool_name = args[0].value
+                has_tool = obj.has_tool(tool_name)
+                return BooleanVal(has_tool)
+
+            elif method_name == "execute_tool":
+                # Tool execution
+                if len(args) < 1:
+                    raise InterpreterError("execute_tool() requires at least 1 argument: tool_name")
+
+                tool_name = args[0].value
+                tool_args = [arg.value for arg in args[1:]]
+
+                try:
+                    result = obj.execute_tool(tool_name, *tool_args)
+                    return StringVal(str(result))
+                except RuntimeError as e:
+                    raise InterpreterError(str(e))
+
             else:
                 raise InterpreterError(f"Unknown method '{method_name}' on agent")
         else:
