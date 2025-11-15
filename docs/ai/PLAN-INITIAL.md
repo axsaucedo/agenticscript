@@ -4,8 +4,9 @@ AgenticScript MVP Technical Stack & Architecture
  - Make extensive notes as you go in a notes.md file which you should only ever append new notes to.
  - Keep it simple, don't over engineer, for the MVP we want to have a non-overengineered but robust foundation to build upon.
  - For every phase completed, propose a commit on the repo with brief conventional commit format
- - Save the plan in PLAN.md, and before starting a new Phase, put together a plan for each respective phase after re-reading PLAN.md
- - After every phase completed review the PLAN.md and update the CLAUDE.md accordingly to reflect the current state.
+ - Save the plan in docs/ai/PLAN-INITIAL.md, and before starting a new Phase
+ - Before starting a new phase put together a plan for each respective phase and document it in docs/ai/PLAN-PHASE-<number>.md
+ - After every phase completed review all the relevant docs/ai/ files and update the CLAUDE.md accordingly to reflect the current state.
 
  Core Technical Stack
 
