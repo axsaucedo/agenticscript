@@ -1,13 +1,17 @@
 [project]
 name = "agenticscript"
 version = "0.1.0"
-description = "Add your description here"
+description = "An agentic-first programming language with distributed runtime capabilities"
 readme = "README.md"
 authors = [
     { name = "Alejandro Saucedo", email = "alejandro.saucedo@zalando.de" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "lark[regex]>=1.1.7",    # Parser generator
+    "rich>=13.0.0",          # Terminal formatting
+    "dataclasses-json>=0.6", # JSON serialization
+]
 
 [project.scripts]
 agenticscript = "agenticscript:main"
