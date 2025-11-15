@@ -125,6 +125,124 @@ class AgenticScriptTransformer(Transformer):
         else:
             return (key, value)
 
+    # Phase 2: New transformer methods for imports, tools, and control flow
+
+    def import_statement(self, children: List[Any]) -> ast.ImportStatement:
+        module_path, import_list = children
+        return ast.ImportStatement(module_path=module_path, import_list=import_list)
+
+    def module_path(self, children: List[Any]) -> ast.ModulePath:
+        # Extract identifier names from tokens
+        path_parts = [child.name for child in children]
+        return ast.ModulePath(path=path_parts)
+
+    def import_list(self, children: List[Any]) -> ast.ImportList:
+        # Extract identifier names from tokens
+        imports = [child.name for child in children]
+        return ast.ImportList(imports=imports)
+
+    def tool_assignment(self, children: List[Any]) -> ast.ToolAssignment:
+        # children: agent_name, operator, tool_list
+        agent_name, operator, tool_list = children
+        return ast.ToolAssignment(
+            agent_name=agent_name.name,
+            operator=operator,
+            tool_list=tool_list
+        )
+
+    def tool_operator(self, children: List[Any]) -> str:
+        return children[0].value  # "=" or "+="
+
+    def tool_list(self, children: List[Any]) -> ast.ToolList:
+        return ast.ToolList(tools=children)
+
+    def tool_spec(self, children: List[Any]) -> ast.ToolSpec:
+        return ast.ToolSpec(name=children[0].name)
+
+    def agent_routing(self, children: List[Any]) -> ast.AgentRouting:
+        tool_name, agent_list = children
+        return ast.AgentRouting(tool_name=tool_name.name, agent_list=agent_list)
+
+    def identifier_list(self, children: List[Any]) -> List[str]:
+        return [child.name for child in children]
+
+    def if_statement(self, children: List[Any]) -> ast.IfStatement:
+        if len(children) == 2:
+            # if without else
+            condition, then_statements = children
+            return ast.IfStatement(condition=condition, then_statements=then_statements)
+        else:
+            # if with else
+            condition, then_statements, else_statements = children
+            return ast.IfStatement(
+                condition=condition,
+                then_statements=then_statements,
+                else_statements=else_statements
+            )
+
+    def condition(self, children: List[Any]) -> ast.ASTNode:
+        return children[0]
+
+    def boolean_expression(self, children: List[Any]) -> ast.BooleanExpression:
+        if len(children) == 1:
+            # Single expression (no operator)
+            return ast.BooleanExpression(left=children[0], operator=None, right=None)
+        elif len(children) == 3:
+            # left operator right
+            left, operator, right = children
+            return ast.BooleanExpression(left=left, operator=operator, right=right)
+        else:
+            # Handle parentheses or other cases
+            return children[0]
+
+    def comparison_expression(self, children: List[Any]) -> ast.ComparisonExpression:
+        if len(children) == 3:
+            # left operator right
+            left, operator, right = children
+            return ast.ComparisonExpression(left=left, operator=operator, right=right)
+        else:
+            # Single method call or expression
+            return children[0]
+
+    def comparison_operator(self, children: List[Any]) -> str:
+        return children[0].value
+
+    def f_string(self, children: List[Any]) -> ast.FString:
+        # Remove F_STRING_START and F_STRING_END, keep contents
+        contents = children[1:-1] if len(children) > 2 else []
+        return ast.FString(contents=contents)
+
+    def f_string_content(self, children: List[Any]) -> ast.FStringContent:
+        if len(children) == 1:
+            # Text content
+            if hasattr(children[0], 'value'):
+                return ast.FStringContent(text=children[0].value)
+            else:
+                # Expression content
+                return ast.FStringContent(expression=children[0])
+        else:
+            # Expression in braces
+            return ast.FStringContent(expression=children[1])  # Skip braces
+
+    def argument(self, children: List[Any]) -> Union[ast.ASTNode, ast.NamedArgument]:
+        if len(children) == 1:
+            # Regular argument
+            return children[0]
+        else:
+            # Named argument: name = value
+            name, value = children
+            return ast.NamedArgument(name=name.name, value=value)
+
+    # Enhanced method call that handles named arguments
+    def enhanced_method_call(self, children: List[Any]) -> ast.EnhancedMethodCall:
+        if len(children) == 3:
+            obj, method, args = children
+            arguments = args if args else []
+        else:
+            obj, method = children
+            arguments = []
+        return ast.EnhancedMethodCall(object=obj.name, method=method.name, arguments=arguments)
+
     # Handle terminals
     def IDENTIFIER(self, token) -> ast.Identifier:
         return ast.Identifier(name=token.value)
@@ -133,6 +251,15 @@ class AgenticScriptTransformer(Transformer):
         return token
 
     def ESCAPED_STRING(self, token) -> str:
+        return token
+
+    def F_STRING_START(self, token) -> str:
+        return token
+
+    def F_STRING_END(self, token) -> str:
+        return token
+
+    def F_STRING_TEXT(self, token) -> str:
         return token
 
 
