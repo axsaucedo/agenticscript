@@ -1,7 +1,7 @@
 AgenticScript MVP Technical Stack & Architecture
 
  Important Instructions:
- - Make extensive notes as you go in a notes.md file which you should only ever append new notes to.
+ - Make extensive notes as you go in a NOTES.md file which you should only ever append new notes to.
  - Keep it simple, don't over engineer, for the MVP we want to have a non-overengineered but robust foundation to build upon.
  - For every phase completed, propose a commit on the repo with brief conventional commit format
  - Save the plan in docs/ai/PLAN-INITIAL.md, and before starting a new Phase
