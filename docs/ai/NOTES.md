@@ -120,8 +120,26 @@ agenticscript/
 - `tests/test_interpreter.py` - Interpreter tests
 - `tests/test_repl.py` - REPL tests
 
-### Next Steps - Phase 2
-- Create threading-based Agent class
-- Implement module system and imports
-- Add tool assignment and execution
-- Implement inter-agent communication patterns
+## PHASE 2 IN PROGRESS - Agent System & Communication - 2024-01-15
+
+### Week 1: Grammar & AST Extensions Completed
+
+**Extended Lark Grammar:**
+- Added import statements: `import agenticscript.stdlib.tools { WebSearch, AgentRouting }`
+- Added tool assignment: `*agent->tools = { ... }` and `*agent->tools += { ... }`
+- Added if/else control flow: `if condition { ... } else { ... }`
+- Added boolean expressions: `==`, `!=`, `and`, `or`, comparisons
+- Added f-string support: `f"Latest AI news: {search_result}"`
+- Added named arguments in method calls: `agent.ask("query", timeout=30)`
+- Added agent routing: `AgentRouting{ b, c }`
+
+**New AST Node Definitions:**
+- Import system: `ImportStatement`, `ModulePath`, `ImportList`
+- Tool system: `ToolAssignment`, `ToolList`, `ToolSpec`, `AgentRouting`
+- Control flow: `IfStatement`, `BooleanExpression`, `ComparisonExpression`
+- Enhanced features: `EnhancedMethodCall`, `NamedArgument`, `FString`, `FStringContent`
+- Updated union types to include all new node types
+
+### Next Steps - Phase 2 Week 1 Remaining
+- Update parser transformer for new grammar constructs
+- Create module system foundation and stdlib structure
