@@ -77,6 +77,10 @@ class AgenticScriptREPL(cmd.Cmd):
             self.debug_history()
         elif command == "tools":
             self.debug_tools()
+        elif command == "flow":
+            self.debug_flow()
+        elif command == "stats":
+            self.debug_stats()
         elif command == "clear":
             self.debug_clear()
         elif command == "help":
@@ -380,6 +384,197 @@ class AgenticScriptREPL(cmd.Cmd):
             tree.add("[red]Tool registry not available[/red]")
             self.console.print(tree)
 
+    def debug_flow(self):
+        """Show message flow visualization between agents."""
+        try:
+            from ..runtime.message_bus import message_bus
+
+            # Get message history
+            history = message_bus.get_message_history(limit=50)  # Last 50 messages
+
+            if not history:
+                self.console.print("[yellow]No message history available[/yellow]")
+                return
+
+            # Build flow analysis
+            flow_data = {}
+            agent_stats = {}
+
+            for msg in history:
+                sender = msg.sender
+                recipient = msg.recipient
+                msg_type = msg.message_type
+
+                # Track agent statistics
+                if sender not in agent_stats:
+                    agent_stats[sender] = {"sent": 0, "received": 0, "types": set()}
+                if recipient not in agent_stats:
+                    agent_stats[recipient] = {"sent": 0, "received": 0, "types": set()}
+
+                agent_stats[sender]["sent"] += 1
+                agent_stats[recipient]["received"] += 1
+                agent_stats[sender]["types"].add(msg_type)
+
+                # Track flow between agents
+                flow_key = f"{sender} → {recipient}"
+                if flow_key not in flow_data:
+                    flow_data[flow_key] = {"count": 0, "types": set(), "recent": []}
+
+                flow_data[flow_key]["count"] += 1
+                flow_data[flow_key]["types"].add(msg_type)
+                flow_data[flow_key]["recent"].append({
+                    "content": msg.content[:30] + "..." if len(msg.content) > 30 else msg.content,
+                    "time": msg.created_at.strftime("%H:%M:%S") if msg.created_at else "Unknown",
+                    "type": msg_type
+                })
+
+            # Display flow visualization
+            tree = Tree("Message Flow Analysis")
+
+            # Show top communication flows
+            if flow_data:
+                flows_node = tree.add("Communication Flows:")
+                sorted_flows = sorted(flow_data.items(), key=lambda x: x[1]["count"], reverse=True)
+
+                for flow, data in sorted_flows[:10]:  # Top 10 flows
+                    count = data["count"]
+                    types = ", ".join(data["types"])
+                    flow_node = flows_node.add(f"{flow} ({count} messages)")
+                    flow_node.add(f"Types: {types}")
+
+                    # Show recent messages
+                    if data["recent"]:
+                        recent_node = flow_node.add("Recent:")
+                        for msg in data["recent"][-3:]:  # Last 3 messages
+                            recent_node.add(f"[{msg['time']}] {msg['type']}: {msg['content']}")
+
+            # Show agent activity summary
+            if agent_stats:
+                activity_node = tree.add("Agent Activity:")
+                sorted_agents = sorted(agent_stats.items(),
+                                     key=lambda x: x[1]["sent"] + x[1]["received"],
+                                     reverse=True)
+
+                for agent, stats in sorted_agents[:8]:  # Top 8 active agents
+                    sent = stats["sent"]
+                    received = stats["received"]
+                    types = ", ".join(list(stats["types"])[:3])  # First 3 types
+                    activity_node.add(f"{agent}: {sent} sent, {received} received ({types})")
+
+            # Show message type distribution
+            type_counts = {}
+            for msg in history:
+                msg_type = msg.message_type
+                type_counts[msg_type] = type_counts.get(msg_type, 0) + 1
+
+            if type_counts:
+                types_node = tree.add("Message Types:")
+                sorted_types = sorted(type_counts.items(), key=lambda x: x[1], reverse=True)
+                for msg_type, count in sorted_types:
+                    types_node.add(f"{msg_type}: {count}")
+
+            self.console.print(tree)
+
+        except ImportError:
+            tree = Tree("Message Flow")
+            tree.add("[red]Message bus not available[/red]")
+            self.console.print(tree)
+
+    def debug_stats(self):
+        """Show detailed statistics and performance metrics."""
+        try:
+            from ..runtime.message_bus import message_bus
+            from ..runtime.tool_registry import tool_registry
+            from datetime import datetime
+
+            tree = Tree("System Statistics")
+
+            # Message bus detailed stats
+            stats = message_bus.get_statistics()
+            msg_node = tree.add("Message Bus Performance:")
+            msg_node.add(f"Total Messages: {stats.total_sent}")
+            msg_node.add(f"Success Rate: {(stats.total_delivered / max(stats.total_sent, 1) * 100):.1f}%")
+            msg_node.add(f"Average Delivery Time: {stats.average_delivery_time:.4f}s")
+            msg_node.add(f"Failed Messages: {stats.total_failed}")
+            msg_node.add(f"Timeout Messages: {stats.total_timeout}")
+
+            # Tool usage statistics
+            tool_stats = tool_registry.get_tool_stats()
+            if tool_stats:
+                tools_node = tree.add("Tool Usage Patterns:")
+
+                # Calculate total usage
+                total_usage = sum(stat.get("usage_count", 0) for stat in tool_stats.values())
+                tools_node.add(f"Total Tool Executions: {total_usage}")
+
+                # Show usage distribution
+                if total_usage > 0:
+                    usage_node = tools_node.add("Usage Distribution:")
+                    sorted_tools = sorted(
+                        tool_stats.items(),
+                        key=lambda x: x[1].get("usage_count", 0),
+                        reverse=True
+                    )
+
+                    for tool_name, stats in sorted_tools:
+                        usage_count = stats.get("usage_count", 0)
+                        if usage_count > 0:
+                            percentage = (usage_count / total_usage) * 100
+                            usage_node.add(f"{tool_name}: {usage_count} ({percentage:.1f}%)")
+
+                # Show enabled/disabled tools
+                enabled = sum(1 for stat in tool_stats.values() if stat.get("enabled", True))
+                disabled = len(tool_stats) - enabled
+                tools_node.add(f"Active Tools: {enabled}, Disabled: {disabled}")
+
+            # Agent statistics
+            agents = self.interpreter.list_agents()
+            if agents:
+                agents_node = tree.add("Agent Statistics:")
+                agents_node.add(f"Total Agents: {len(agents)}")
+
+                # Count agents by status
+                status_counts = {}
+                for agent in agents.values():
+                    status = agent.status
+                    status_counts[status] = status_counts.get(status, 0) + 1
+
+                status_node = agents_node.add("Status Distribution:")
+                for status, count in status_counts.items():
+                    status_node.add(f"{status}: {count}")
+
+                # Show agents with tool assignments
+                agents_with_tools = 0
+                total_local_tools = 0
+                for agent in agents.values():
+                    if hasattr(agent, 'assigned_tools') and agent.assigned_tools:
+                        agents_with_tools += 1
+                        total_local_tools += len(agent.assigned_tools)
+
+                agents_node.add(f"Agents with Local Tools: {agents_with_tools}")
+                agents_node.add(f"Total Local Tool Assignments: {total_local_tools}")
+
+            # Performance metrics
+            perf_node = tree.add("Performance Metrics:")
+
+            # Message bus agents
+            bus_agents = len(message_bus.list_agents())
+            perf_node.add(f"Message Bus Registrations: {bus_agents}")
+
+            # Recent activity (last 10 messages)
+            recent_msgs = message_bus.get_message_history(limit=10)
+            if recent_msgs:
+                recent_activity = len([m for m in recent_msgs
+                                    if (datetime.now() - m.created_at).total_seconds() < 60])
+                perf_node.add(f"Messages in Last Minute: {recent_activity}")
+
+            self.console.print(tree)
+
+        except ImportError:
+            tree = Tree("Statistics")
+            tree.add("[red]Runtime components not available[/red]")
+            self.console.print(tree)
+
     def debug_clear(self):
         """Clear debug output."""
         self.console.clear()
@@ -394,6 +589,8 @@ class AgenticScriptREPL(cmd.Cmd):
 [cyan]debug system[/cyan]              - System status overview
 [cyan]debug messages[/cyan]            - Message bus statistics
 [cyan]debug tools[/cyan]               - Tool registry and usage statistics
+[cyan]debug flow[/cyan]                - Message flow visualization between agents
+[cyan]debug stats[/cyan]               - Detailed system performance statistics
 [cyan]debug trace <on|off>[/cyan]      - Toggle execution tracing
 [cyan]debug memory[/cyan]              - Memory usage analysis
 [cyan]debug history[/cyan]             - Show execution history
@@ -405,6 +602,8 @@ as> agent a = spawn Agent{{ openai/gpt-4o }}
 as> debug agents
 as> debug dump a
 as> debug tools
+as> debug flow
+as> debug stats
 as> debug messages
 as> debug trace on
 as> *a->goal = "test"
