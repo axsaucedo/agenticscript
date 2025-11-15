@@ -75,6 +75,8 @@ class AgenticScriptREPL(cmd.Cmd):
             self.debug_memory()
         elif command == "history":
             self.debug_history()
+        elif command == "tools":
+            self.debug_tools()
         elif command == "clear":
             self.debug_clear()
         elif command == "help":
@@ -127,22 +129,77 @@ class AgenticScriptREPL(cmd.Cmd):
         if agent.properties:
             props_node = tree.add("Properties:")
             for key, value in agent.properties.items():
-                props_node.add(f"{key}: {value}")
+                # Truncate long values
+                str_value = str(value)
+                if len(str_value) > 50:
+                    str_value = str_value[:47] + "..."
+                props_node.add(f"{key}: {str_value}")
         else:
             tree.add("Properties: (none)")
 
-        # Add tools (placeholder for now)
-        if agent.tools:
+        # Add enhanced agent information
+        if hasattr(agent, 'get_agent_id'):
+            tree.add(f"Agent ID: {agent.get_agent_id()}")
+
+        # Show threading status
+        if hasattr(agent, '_processing_thread'):
+            is_processing = (agent._processing_thread and
+                           agent._processing_thread.is_alive())
+            threading_status = "Active" if is_processing else "Stopped"
+            tree.add(f"Background Processing: {threading_status}")
+
+        # Add tools (both local and registry access)
+        if hasattr(agent, 'assigned_tools') or hasattr(agent, 'tools'):
             tools_node = tree.add("Tools:")
-            for tool in agent.tools:
-                tools_node.add(str(tool))
+
+            # Local tools
+            if hasattr(agent, 'assigned_tools') and agent.assigned_tools:
+                local_node = tools_node.add("Local Tools:")
+                for tool_name in agent.assigned_tools.keys():
+                    local_node.add(tool_name)
+
+            # Registry tools (show a few examples)
+            if hasattr(agent, 'has_tool'):
+                registry_tools = []
+                for tool in ["WebSearch", "Calculator", "FileManager", "AgentRouting"]:
+                    if agent.has_tool(tool):
+                        registry_tools.append(tool)
+
+                if registry_tools:
+                    registry_node = tools_node.add("Registry Tools (accessible):")
+                    for tool in registry_tools[:5]:  # Show first 5
+                        registry_node.add(tool)
+                    if len(registry_tools) > 5:
+                        registry_node.add(f"... and {len(registry_tools) - 5} more")
         else:
             tree.add("Tools: []")
 
-        # Add mock data for now
-        tree.add("Message Queue: empty")
-        tree.add("Execution History: []")
-        tree.add("Memory Usage: 2.1MB")
+        # Show message queue info
+        if hasattr(agent, 'get_pending_messages'):
+            messages = agent.get_pending_messages()
+            if messages:
+                queue_node = tree.add(f"Message Queue ({len(messages)} messages):")
+                for i, msg in enumerate(messages[-3:]):  # Show last 3
+                    timestamp = msg.get('timestamp', 'Unknown')
+                    if hasattr(timestamp, 'strftime'):
+                        timestamp = timestamp.strftime("%H:%M:%S")
+                    queue_node.add(f"[{timestamp}] {msg.get('message', 'No content')[:30]}...")
+                if len(messages) > 3:
+                    queue_node.add(f"... and {len(messages) - 3} more")
+            else:
+                tree.add("Message Queue: empty")
+
+        # Show message bus stats for this agent
+        if hasattr(agent, 'get_message_bus_stats'):
+            try:
+                stats = agent.get_message_bus_stats()
+                bus_node = tree.add("Message Bus Stats:")
+                bus_node.add(f"Total Messages: {stats.get('total_messages', 0)}")
+                bus_node.add(f"Pending: {stats.get('pending_messages', 0)}")
+            except:
+                tree.add("Message Bus: Not available")
+
+        tree.add("Memory Usage: ~2.1MB (estimated)")
 
         self.console.print(tree)
 
@@ -152,9 +209,31 @@ class AgenticScriptREPL(cmd.Cmd):
 
         tree = Tree("System Status")
         tree.add(f"Active Agents: {len(agents)}")
-        tree.add("Total Messages: 0")  # Mock for now
-        tree.add("Memory Usage: 15.2MB")  # Mock for now
-        tree.add("Uptime: N/A")  # Mock for now
+
+        # Get message bus stats
+        try:
+            from ..runtime.message_bus import message_bus
+            stats = message_bus.get_statistics()
+            tree.add(f"Total Messages: {stats.total_sent}")
+            tree.add(f"Messages Delivered: {stats.total_delivered}")
+            tree.add(f"Message Bus Agents: {len(message_bus.list_agents())}")
+        except ImportError:
+            tree.add("Message Bus: Not available")
+
+        # Get tool registry stats
+        try:
+            from ..runtime.tool_registry import tool_registry
+            tools = tool_registry.list_tools()
+            tree.add(f"Available Tools: {len(tools)}")
+            tool_stats = tool_registry.get_tool_stats()
+            total_usage = sum(stat["usage_count"] for stat in tool_stats.values())
+            tree.add(f"Total Tool Executions: {total_usage}")
+        except ImportError:
+            tree.add("Tool Registry: Not available")
+
+        # Add memory placeholder (real memory tracking would require more work)
+        tree.add("Memory Usage: ~15.2MB (estimated)")
+        tree.add("Uptime: N/A")
         tree.add("Last Error: None")
 
         self.console.print(tree)
@@ -172,13 +251,37 @@ class AgenticScriptREPL(cmd.Cmd):
 
     def debug_messages(self):
         """Show message bus statistics."""
-        tree = Tree("Message Bus Status")
-        tree.add("Total Messages Sent: 0")
-        tree.add("Pending Messages: 0")
-        tree.add("Failed Messages: 0")
-        tree.add("Average Processing Time: N/A")
+        try:
+            from ..runtime.message_bus import message_bus
 
-        self.console.print(tree)
+            stats = message_bus.get_statistics()
+            agents = message_bus.list_agents()
+
+            tree = Tree("Message Bus Status")
+            tree.add(f"Total Messages Sent: {stats.total_sent}")
+            tree.add(f"Total Messages Delivered: {stats.total_delivered}")
+            tree.add(f"Total Messages Failed: {stats.total_failed}")
+            tree.add(f"Total Messages Timeout: {stats.total_timeout}")
+            tree.add(f"Average Delivery Time: {stats.average_delivery_time:.4f}s")
+            tree.add(f"Active Subscriptions: {stats.active_subscriptions}")
+            tree.add(f"Registered Agents: {len(agents)}")
+
+            # Show pending messages per agent
+            if agents:
+                pending_node = tree.add("Pending Messages by Agent:")
+                for agent_id in agents:
+                    pending = message_bus.get_pending_count(agent_id)
+                    if pending > 0:
+                        pending_node.add(f"{agent_id}: {pending}")
+                if not any(message_bus.get_pending_count(aid) > 0 for aid in agents):
+                    pending_node.add("No pending messages")
+
+            self.console.print(tree)
+
+        except ImportError:
+            tree = Tree("Message Bus Status")
+            tree.add("[red]Message bus not available[/red]")
+            self.console.print(tree)
 
     def debug_memory(self):
         """Show memory usage analysis."""
@@ -199,6 +302,84 @@ class AgenticScriptREPL(cmd.Cmd):
         """Show execution history."""
         self.console.print("[yellow]Execution history: (not implemented in MVP)[/yellow]")
 
+    def debug_tools(self):
+        """Show tool registry statistics."""
+        try:
+            from ..runtime.tool_registry import tool_registry
+
+            tools = tool_registry.list_tools()
+            tool_stats = tool_registry.get_tool_stats()
+
+            if not tools:
+                self.console.print("[yellow]No tools available[/yellow]")
+                return
+
+            # Create table for tool information
+            table = Table(title="Tool Registry")
+            table.add_column("Tool Name", style="cyan")
+            table.add_column("Usage Count", style="magenta")
+            table.add_column("Last Used", style="blue")
+            table.add_column("Status", style="green")
+            table.add_column("Tags", style="white")
+
+            for tool_name in sorted(tools):
+                stats = tool_stats.get(tool_name, {})
+                usage_count = stats.get("usage_count", 0)
+                last_used = stats.get("last_used", "Never")
+                enabled = stats.get("enabled", True)
+                tags = ", ".join(stats.get("tags", []))
+
+                status = "Enabled" if enabled else "Disabled"
+                if last_used != "Never" and last_used:
+                    # Format ISO timestamp nicely
+                    try:
+                        from datetime import datetime
+                        dt = datetime.fromisoformat(last_used.replace('Z', '+00:00'))
+                        last_used = dt.strftime("%Y-%m-%d %H:%M:%S")
+                    except:
+                        pass
+
+                table.add_row(
+                    tool_name,
+                    str(usage_count),
+                    last_used or "Never",
+                    status,
+                    tags or "None"
+                )
+
+            self.console.print(table)
+
+            # Show summary statistics
+            total_usage = sum(stat.get("usage_count", 0) for stat in tool_stats.values())
+            enabled_count = sum(1 for stat in tool_stats.values() if stat.get("enabled", True))
+
+            tree = Tree("Tool Summary")
+            tree.add(f"Total Tools: {len(tools)}")
+            tree.add(f"Enabled Tools: {enabled_count}")
+            tree.add(f"Total Executions: {total_usage}")
+
+            # Show most used tools
+            if tool_stats:
+                most_used = sorted(
+                    tool_stats.items(),
+                    key=lambda x: x[1].get("usage_count", 0),
+                    reverse=True
+                )[:3]
+
+                if most_used and most_used[0][1].get("usage_count", 0) > 0:
+                    popular = tree.add("Most Used:")
+                    for tool_name, stats in most_used:
+                        usage = stats.get("usage_count", 0)
+                        if usage > 0:
+                            popular.add(f"{tool_name}: {usage} times")
+
+            self.console.print(tree)
+
+        except ImportError:
+            tree = Tree("Tool Registry")
+            tree.add("[red]Tool registry not available[/red]")
+            self.console.print(tree)
+
     def debug_clear(self):
         """Clear debug output."""
         self.console.clear()
@@ -212,6 +393,7 @@ class AgenticScriptREPL(cmd.Cmd):
 [cyan]debug dump <agent>[/cyan]        - Detailed agent information
 [cyan]debug system[/cyan]              - System status overview
 [cyan]debug messages[/cyan]            - Message bus statistics
+[cyan]debug tools[/cyan]               - Tool registry and usage statistics
 [cyan]debug trace <on|off>[/cyan]      - Toggle execution tracing
 [cyan]debug memory[/cyan]              - Memory usage analysis
 [cyan]debug history[/cyan]             - Show execution history
@@ -222,6 +404,8 @@ class AgenticScriptREPL(cmd.Cmd):
 as> agent a = spawn Agent{{ openai/gpt-4o }}
 as> debug agents
 as> debug dump a
+as> debug tools
+as> debug messages
 as> debug trace on
 as> *a->goal = "test"
         """
