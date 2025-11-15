@@ -12,9 +12,7 @@ statement: agent_declaration
 // Agent declarations: agent a = spawn Agent{ openai/gpt-4o }
 agent_declaration: "agent" IDENTIFIER "=" "spawn" agent_constructor
 
-agent_constructor: "Agent" "{" agent_config "}"
-
-agent_config: model_spec ("," config_pair)*
+agent_constructor: "Agent" "{" model_spec ("," config_pair)* "}"
 
 model_spec: MODEL_PATH
 

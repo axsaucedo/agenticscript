@@ -8,8 +8,7 @@ from abc import ABC, abstractmethod
 @dataclass
 class ASTNode(ABC):
     """Base class for all AST nodes."""
-    line: Optional[int] = None
-    column: Optional[int] = None
+    pass
 
 
 # Value nodes

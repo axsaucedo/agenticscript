@@ -20,22 +20,25 @@ class AgenticScriptTransformer(Transformer):
         return children[0]
 
     def agent_declaration(self, children: List[Any]) -> ast.AgentDeclaration:
-        _, name, _, _, constructor = children
-        return ast.AgentDeclaration(name=name.value, constructor=constructor)
+        # Lark removes literal tokens, so we just get name and constructor
+        name, constructor = children
+        return ast.AgentDeclaration(name=name.name, constructor=constructor)
 
     def agent_constructor(self, children: List[Any]) -> ast.AgentConstructor:
-        _, _, config, _ = children
-        if isinstance(config, ast.ModelSpec):
-            # Only model specified
-            return ast.AgentConstructor(model=config, config=[])
-        else:
-            # Model + additional config
-            model = config[0]
-            config_pairs = config[1:] if len(config) > 1 else []
-            return ast.AgentConstructor(model=model, config=config_pairs)
+        # children should be the parsed content inside { }
+        model_spec = None
+        config_pairs = []
 
-    def agent_config(self, children: List[Any]) -> List[Union[ast.ModelSpec, ast.ConfigPair]]:
-        return children
+        for child in children:
+            if isinstance(child, ast.ModelSpec):
+                model_spec = child
+            elif isinstance(child, ast.ConfigPair):
+                config_pairs.append(child)
+
+        if model_spec is None:
+            raise ValueError("No model specification found in agent constructor")
+
+        return ast.AgentConstructor(model=model_spec, config=config_pairs)
 
     def model_spec(self, children: List[Any]) -> ast.ModelSpec:
         return ast.ModelSpec(path=children[0].value)
@@ -45,15 +48,17 @@ class AgenticScriptTransformer(Transformer):
         return ast.ConfigPair(key=key.value, value=value)
 
     def property_assignment(self, children: List[Any]) -> ast.PropertyAssignment:
-        _, agent_name, _, prop_name, _, value = children
+        # Lark removes literal tokens, so we get: agent_name, prop_name, value
+        agent_name, prop_name, value = children
         return ast.PropertyAssignment(
-            agent_name=agent_name.value,
-            property_name=prop_name.value,
+            agent_name=agent_name.name,
+            property_name=prop_name.name,
             value=value
         )
 
     def print_statement(self, children: List[Any]) -> ast.PrintStatement:
-        _, _, expr, _ = children
+        # Lark removes literal tokens, so we just get the expression
+        expr = children[0]
         return ast.PrintStatement(expression=expr)
 
     def expression_statement(self, children: List[Any]) -> ast.ExpressionStatement:
@@ -63,13 +68,18 @@ class AgenticScriptTransformer(Transformer):
         return children[0]
 
     def property_access(self, children: List[Any]) -> ast.PropertyAccess:
-        obj, _, prop = children
-        return ast.PropertyAccess(object=obj.value, property=prop.value)
+        obj, prop = children
+        return ast.PropertyAccess(object=obj.name, property=prop.name)
 
     def method_call(self, children: List[Any]) -> ast.MethodCall:
-        obj, _, method, _, args = children[:5]
-        arguments = args if args else []
-        return ast.MethodCall(object=obj.value, method=method.value, arguments=arguments)
+        # Lark removes literal tokens, so we get obj, method, args
+        if len(children) == 3:
+            obj, method, args = children
+            arguments = args if args else []
+        else:
+            obj, method = children
+            arguments = []
+        return ast.MethodCall(object=obj.name, method=method.name, arguments=arguments)
 
     def arguments(self, children: List[Any]) -> List[ast.ASTNode]:
         return children
