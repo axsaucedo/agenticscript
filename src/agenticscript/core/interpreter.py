@@ -46,13 +46,30 @@ class AgentVal(AgenticScriptValue):
     """Runtime representation of an AgenticScript agent."""
 
     def __init__(self, name: str, model: str, **config):
+        import threading
+        from ..runtime.tool_registry import tool_registry
+        from ..runtime.message_bus import message_bus
+
         self.name = name
         self.model = model
-        self.status = "idle"  # idle, active, error
+        self.status = "idle"  # idle, active, processing, using_tool, error
         self.properties = {}
         self.tools = []
         self.assigned_tools = {}  # tool_name -> tool_instance mapping
-        self.message_queue = []  # simple queue for async messages
+        self.message_queue = []  # simple queue for async messages (backup)
+
+        # Threading support
+        self._lock = threading.RLock()
+        self._processing_thread = None
+        self._stop_processing = threading.Event()
+
+        # Runtime integration
+        self._tool_registry = tool_registry
+        self._message_bus = message_bus
+        self._agent_id = f"{name}_{id(self):x}"  # Unique agent ID
+
+        # Register with message bus
+        self._message_bus.register_agent(self._agent_id)
 
         # Apply configuration
         for key, value in config.items():
@@ -89,28 +106,53 @@ class AgentVal(AgenticScriptValue):
         Returns:
             Response string from the agent
         """
-        # Mock implementation for Phase 2
-        # In a real implementation, this would route through the message bus
         import time
-        time.sleep(0.01)  # Simulate processing time
+        import threading
 
-        # Update status during processing
-        old_status = self.status
-        self.status = "processing"
+        with self._lock:
+            # Update status during processing
+            old_status = self.status
+            self.status = "processing"
 
-        # Mock response based on message content
-        if "error" in message.lower():
-            response = f"Error handling: {message}"
-        elif "status" in message.lower():
-            response = f"Agent {self.name} status: {old_status}"
-        elif "hello" in message.lower():
-            response = f"Hello from {self.name}!"
-        else:
-            response = f"Agent {self.name} processed: {message}"
+        try:
+            # Simulate processing in a separate thread for realism
+            def process_message():
+                time.sleep(0.01)  # Simulate processing time
 
-        # Restore status
-        self.status = old_status
-        return response
+            # Process message based on content (mock AI response)
+            if "error" in message.lower():
+                response = f"Error handling: {message}"
+            elif "status" in message.lower():
+                response = f"Agent {self.name} status: {old_status}"
+            elif "hello" in message.lower():
+                response = f"Hello from {self.name}!"
+            elif "busy" in message.lower():
+                # Simulate longer processing
+                time.sleep(0.05)
+                response = f"Agent {self.name} was busy but processed: {message}"
+            else:
+                response = f"Agent {self.name} processed: {message}"
+
+            # Log the interaction through message bus (for debugging/history)
+            self._message_bus.send_message(
+                sender="system",
+                recipient=self._agent_id,
+                content=f"ASK: {message}",
+                message_type="ask_request"
+            )
+
+            self._message_bus.send_message(
+                sender=self._agent_id,
+                recipient="system",
+                content=f"RESPONSE: {response}",
+                message_type="ask_response"
+            )
+
+            return response
+
+        finally:
+            with self._lock:
+                self.status = old_status
 
     def tell(self, message: str) -> None:
         """Send an asynchronous message to this agent.
@@ -118,12 +160,21 @@ class AgentVal(AgenticScriptValue):
         Args:
             message: Message to send
         """
-        # Mock implementation - just add to message queue
+        # Send through message bus for proper async handling
+        message_id = self._message_bus.send_message(
+            sender="system",
+            recipient=self._agent_id,
+            content=message,
+            message_type="tell"
+        )
+
+        # Also keep in local queue as backup
         import datetime
         self.message_queue.append({
             "message": message,
             "timestamp": datetime.datetime.now(),
-            "sender": "system"  # Will be updated when message bus is implemented
+            "sender": "system",
+            "message_id": message_id
         })
 
     def has_tool(self, tool_name: str) -> bool:
@@ -135,7 +186,10 @@ class AgentVal(AgenticScriptValue):
         Returns:
             True if agent has the tool, False otherwise
         """
-        return tool_name in self.assigned_tools
+        with self._lock:
+            # Check both local assignment and global registry
+            return (tool_name in self.assigned_tools or
+                    self._tool_registry.is_tool_available(tool_name))
 
     def execute_tool(self, tool_name: str, *args, **kwargs) -> Any:
         """Execute a tool with given arguments.
@@ -154,17 +208,33 @@ class AgentVal(AgenticScriptValue):
         if not self.has_tool(tool_name):
             raise RuntimeError(f"Agent {self.name} does not have access to tool '{tool_name}'")
 
-        tool_instance = self.assigned_tools[tool_name]
-
-        # Update agent status during tool execution
-        old_status = self.status
-        self.status = "using_tool"
+        with self._lock:
+            # Update agent status during tool execution
+            old_status = self.status
+            self.status = "using_tool"
 
         try:
-            result = tool_instance.execute(*args, **kwargs)
+            # Try local tool first, then registry
+            if tool_name in self.assigned_tools:
+                tool_instance = self.assigned_tools[tool_name]
+                result = tool_instance.execute(*args, **kwargs)
+            else:
+                # Use tool registry for execution
+                result = self._tool_registry.execute_tool(tool_name, *args, **kwargs)
+
+            # Log tool usage through message bus
+            self._message_bus.send_message(
+                sender=self._agent_id,
+                recipient="system",
+                content=f"TOOL_EXECUTION: {tool_name} -> {result}",
+                message_type="tool_usage"
+            )
+
             return result
+
         finally:
-            self.status = old_status
+            with self._lock:
+                self.status = old_status
 
     def assign_tool(self, tool_name: str, tool_instance: Any) -> None:
         """Assign a tool instance to this agent.
@@ -203,9 +273,165 @@ class AgentVal(AgenticScriptValue):
         Returns:
             Number of messages cleared
         """
-        count = len(self.message_queue)
-        self.message_queue.clear()
-        return count
+        with self._lock:
+            count = len(self.message_queue)
+            self.message_queue.clear()
+            return count
+
+    def start_background_processing(self) -> bool:
+        """Start background message processing thread.
+
+        Returns:
+            True if started successfully, False if already running
+        """
+        import threading
+
+        with self._lock:
+            if self._processing_thread and self._processing_thread.is_alive():
+                return False
+
+            self._stop_processing.clear()
+            self._processing_thread = threading.Thread(
+                target=self._background_processor,
+                name=f"Agent-{self.name}-Processor",
+                daemon=True
+            )
+            self._processing_thread.start()
+            return True
+
+    def stop_background_processing(self) -> bool:
+        """Stop background message processing thread.
+
+        Returns:
+            True if stopped successfully, False if not running
+        """
+        with self._lock:
+            if not self._processing_thread or not self._processing_thread.is_alive():
+                return False
+
+            self._stop_processing.set()
+            self._processing_thread.join(timeout=1.0)
+            return True
+
+    def _background_processor(self):
+        """Background thread for processing messages."""
+        import time
+
+        while not self._stop_processing.is_set():
+            try:
+                # Check for messages from message bus
+                message = self._message_bus.receive_message(self._agent_id, timeout=0.1)
+                if message:
+                    self._process_background_message(message)
+
+                # Small delay to prevent busy waiting
+                time.sleep(0.01)
+
+            except Exception:
+                # Continue processing even if there are errors
+                pass
+
+    def _process_background_message(self, message):
+        """Process a message received in background.
+
+        Args:
+            message: Message object from message bus
+        """
+        with self._lock:
+            # Update status temporarily
+            old_status = self.status
+            self.status = "processing"
+
+        try:
+            # Simple message processing logic
+            if message.message_type == "tell":
+                # Add to local queue for tracking
+                import datetime
+                self.message_queue.append({
+                    "message": message.content,
+                    "timestamp": datetime.datetime.now(),
+                    "sender": message.sender,
+                    "message_id": message.id
+                })
+
+            elif message.message_type == "ping":
+                # Respond to ping messages
+                self._message_bus.send_message(
+                    sender=self._agent_id,
+                    recipient=message.sender,
+                    content=f"pong from {self.name}",
+                    message_type="pong",
+                    response_to=message.id
+                )
+
+        finally:
+            with self._lock:
+                self.status = old_status
+
+    def get_agent_id(self) -> str:
+        """Get the unique agent ID used by the message bus.
+
+        Returns:
+            Agent ID string
+        """
+        return self._agent_id
+
+    def get_message_bus_stats(self) -> dict:
+        """Get message bus statistics for this agent.
+
+        Returns:
+            Dictionary with agent's message statistics
+        """
+        stats = self._message_bus.get_statistics()
+        agent_history = self._message_bus.get_agent_message_history(self._agent_id)
+
+        return {
+            "agent_id": self._agent_id,
+            "total_messages": len(agent_history),
+            "pending_messages": self._message_bus.get_pending_count(self._agent_id),
+            "global_stats": {
+                "total_sent": stats.total_sent,
+                "total_delivered": stats.total_delivered,
+                "average_delivery_time": stats.average_delivery_time
+            }
+        }
+
+    def register_with_tool_registry(self, tool_name: str) -> bool:
+        """Register this agent to use a specific tool from the global registry.
+
+        Args:
+            tool_name: Name of the tool to register for
+
+        Returns:
+            True if registration successful
+        """
+        with self._lock:
+            if self._tool_registry.is_tool_available(tool_name):
+                # Mark as having access to this tool
+                if tool_name not in self.assigned_tools:
+                    # Get instance from registry for local caching
+                    tool_instance = self._tool_registry.get_tool_instance(tool_name)
+                    if tool_instance:
+                        self.assigned_tools[tool_name] = tool_instance
+                return True
+            return False
+
+    def cleanup(self):
+        """Cleanup agent resources (threading, message bus registration)."""
+        # Stop background processing
+        self.stop_background_processing()
+
+        # Unregister from message bus
+        with self._lock:
+            self._message_bus.unregister_agent(self._agent_id)
+
+    def __del__(self):
+        """Destructor to ensure cleanup."""
+        try:
+            self.cleanup()
+        except Exception:
+            # Ignore cleanup errors during destruction
+            pass
 
     def __str__(self):
         return f"Agent({self.name}, {self.model}, {self.status})"
