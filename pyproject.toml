@@ -13,9 +13,23 @@ dependencies = [
     "dataclasses-json>=0.6", # JSON serialization
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",        # Testing
+    "pytest-cov>=4.1.0",    # Coverage
+    "ruff>=0.1.0",          # Linting and formatting
+]
+
 [project.scripts]
 agenticscript = "agenticscript:main"
 
 [build-system]
 requires = ["uv_build>=0.8.13,<0.9.0"]
 build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I"]
