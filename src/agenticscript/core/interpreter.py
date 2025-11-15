@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, Optional
 from . import ast_nodes as ast
+from .module_system import module_system
 
 
 class AgenticScriptValue:
@@ -450,6 +451,7 @@ class AgenticScriptInterpreter:
 
     def __init__(self):
         self.globals: Dict[str, AgenticScriptValue] = {}
+        self.variables: Dict[str, AgenticScriptValue] = {}
         self.agents: Dict[str, AgentVal] = {}
 
     def interpret(self, program: ast.Program) -> None:
@@ -459,16 +461,36 @@ class AgenticScriptInterpreter:
 
     def execute_statement(self, stmt: ast.StatementType) -> None:
         """Execute a single statement."""
-        if isinstance(stmt, ast.AgentDeclaration):
+        if isinstance(stmt, ast.ImportStatement):
+            self.execute_import_statement(stmt)
+        elif isinstance(stmt, ast.AgentDeclaration):
             self.execute_agent_declaration(stmt)
         elif isinstance(stmt, ast.PropertyAssignment):
             self.execute_property_assignment(stmt)
+        elif isinstance(stmt, ast.ToolAssignment):
+            self.execute_tool_assignment(stmt)
+        elif isinstance(stmt, ast.AssignmentStatement):
+            self.execute_assignment_statement(stmt)
+        elif isinstance(stmt, ast.IfStatement):
+            self.execute_if_statement(stmt)
         elif isinstance(stmt, ast.PrintStatement):
             self.execute_print_statement(stmt)
         elif isinstance(stmt, ast.ExpressionStatement):
             self.evaluate_expression(stmt.expression)
         else:
             raise InterpreterError(f"Unknown statement type: {type(stmt)}")
+
+    def execute_import_statement(self, stmt: ast.ImportStatement) -> None:
+        """Execute import statement: import module { items }"""
+        # Extract the actual lists from the AST nodes
+        module_path = stmt.module_path.path
+        import_list = stmt.import_list.imports
+
+        # Do the import through the module system
+        imports = module_system.import_module(module_path, import_list)
+        # Add imported items to globals so they can be referenced
+        for item_name, item_value in imports.items():
+            self.globals[item_name] = item_value
 
     def execute_agent_declaration(self, stmt: ast.AgentDeclaration) -> None:
         """Execute agent declaration: agent a = spawn Agent{ model }"""
@@ -514,6 +536,54 @@ class AgenticScriptInterpreter:
         agent.set_property(stmt.property_name, py_value)
         print(f"Property '{stmt.property_name}' set on agent '{agent_name}'")
 
+    def execute_tool_assignment(self, stmt: ast.ToolAssignment) -> None:
+        """Execute tool assignment: *agent->tools = { tools }"""
+        agent_name = stmt.agent_name
+
+        if agent_name not in self.agents:
+            raise InterpreterError(f"Agent '{agent_name}' not found")
+
+        agent = self.agents[agent_name]
+
+        # Process the tool list
+        for tool_spec in stmt.tool_list.tools:
+            if isinstance(tool_spec, ast.ToolSpec):
+                # Simple tool name - register with tool registry
+                tool_name = tool_spec.name
+                agent.register_with_tool_registry(tool_name)
+            elif isinstance(tool_spec, ast.AgentRouting):
+                # AgentRouting tool with specific agents
+                from ..stdlib.tools import AgentRoutingTool
+                routing_tool = AgentRoutingTool(tool_spec.agent_list)
+                agent.assign_tool(tool_spec.tool_name, routing_tool)
+
+        print(f"Tools assigned to agent '{agent_name}'")
+
+    def execute_assignment_statement(self, stmt: ast.AssignmentStatement) -> None:
+        """Execute variable assignment: variable = expression"""
+        value = self.evaluate_expression(stmt.value)
+        self.variables[stmt.variable_name] = value
+
+    def execute_if_statement(self, stmt: ast.IfStatement) -> None:
+        """Execute if statement: if condition { statements }"""
+        condition_value = self.evaluate_expression(stmt.condition)
+
+        # Convert to Python boolean
+        if isinstance(condition_value, BooleanVal):
+            should_execute = condition_value.value
+        else:
+            # Truthy evaluation for other types
+            should_execute = bool(condition_value)
+
+        if should_execute:
+            # Execute then statements
+            for statement in stmt.then_statements:
+                self.execute_statement(statement)
+        elif stmt.else_statements:
+            # Execute else statements if condition is false
+            for statement in stmt.else_statements:
+                self.execute_statement(statement)
+
     def execute_print_statement(self, stmt: ast.PrintStatement) -> None:
         """Execute print statement: print(expression)"""
         value = self.evaluate_expression(stmt.expression)
@@ -528,7 +598,9 @@ class AgenticScriptInterpreter:
         elif isinstance(expr, ast.BooleanValue):
             return BooleanVal(expr.value)
         elif isinstance(expr, ast.Identifier):
-            if expr.name in self.globals:
+            if expr.name in self.variables:
+                return self.variables[expr.name]
+            elif expr.name in self.globals:
                 return self.globals[expr.name]
             else:
                 raise InterpreterError(f"Undefined variable: {expr.name}")
@@ -536,8 +608,54 @@ class AgenticScriptInterpreter:
             return self.evaluate_property_access(expr)
         elif isinstance(expr, ast.MethodCall):
             return self.evaluate_method_call(expr)
+        elif isinstance(expr, ast.BooleanExpression):
+            return self.evaluate_boolean_expression(expr)
         else:
             raise InterpreterError(f"Unknown expression type: {type(expr)}")
+
+    def evaluate_boolean_expression(self, expr: ast.BooleanExpression) -> BooleanVal:
+        """Evaluate boolean expressions like ==, !=, <, >, etc"""
+        left_val = self.evaluate_expression(expr.left)
+
+        # If no operator, this is a unary truthiness check
+        if expr.operator is None or expr.right is None:
+            left_py = self._to_python_value(left_val)
+            return BooleanVal(bool(left_py))
+
+        # Binary comparison
+        right_val = self.evaluate_expression(expr.right)
+
+        # Convert values to Python types for comparison
+        left_py = self._to_python_value(left_val)
+        right_py = self._to_python_value(right_val)
+
+        if expr.operator == "==":
+            result = left_py == right_py
+        elif expr.operator == "!=":
+            result = left_py != right_py
+        elif expr.operator == "<":
+            result = left_py < right_py
+        elif expr.operator == ">":
+            result = left_py > right_py
+        elif expr.operator == "<=":
+            result = left_py <= right_py
+        elif expr.operator == ">=":
+            result = left_py >= right_py
+        else:
+            raise InterpreterError(f"Unknown boolean operator: {expr.operator}")
+
+        return BooleanVal(result)
+
+    def _to_python_value(self, val: AgenticScriptValue) -> Any:
+        """Convert AgenticScript value to Python value for operations"""
+        if isinstance(val, StringVal):
+            return val.value
+        elif isinstance(val, NumberVal):
+            return val.value
+        elif isinstance(val, BooleanVal):
+            return val.value
+        else:
+            return val
 
     def evaluate_property_access(self, expr: ast.PropertyAccess) -> AgenticScriptValue:
         """Evaluate property access: object.property"""

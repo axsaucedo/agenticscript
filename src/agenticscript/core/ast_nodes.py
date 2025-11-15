@@ -87,6 +87,12 @@ class PropertyAssignment(ASTNode):
     value: ASTNode
 
 
+@dataclass
+class AssignmentStatement(ASTNode):
+    variable_name: str
+    value: ASTNode
+
+
 # Statement nodes
 @dataclass
 class PrintStatement(ASTNode):

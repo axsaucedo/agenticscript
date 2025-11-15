@@ -8,6 +8,7 @@ statement: import_statement
          | agent_declaration
          | property_assignment
          | tool_assignment
+         | assignment_statement
          | if_statement
          | print_statement
          | expression_statement
@@ -33,6 +34,9 @@ property_assignment: "*" IDENTIFIER "->" IDENTIFIER "=" value
 
 // Tool assignment: *a->tools = { WebSearch } or *a->tools += { Calculator }
 tool_assignment: "*" IDENTIFIER "->" "tools" tool_operator tool_list
+
+// Variable assignment: result = expression
+assignment_statement: IDENTIFIER "=" expression
 
 tool_operator: "=" | "+="
 

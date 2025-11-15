@@ -56,6 +56,14 @@ class AgenticScriptTransformer(Transformer):
             value=value
         )
 
+    def assignment_statement(self, children: List[Any]) -> ast.AssignmentStatement:
+        # Lark removes literal tokens, so we get: variable_name, value
+        variable_name, value = children
+        return ast.AssignmentStatement(
+            variable_name=variable_name.name,
+            value=value
+        )
+
     def print_statement(self, children: List[Any]) -> ast.PrintStatement:
         # Lark removes literal tokens, so we just get the expression
         expr = children[0]
@@ -167,8 +175,13 @@ class AgenticScriptTransformer(Transformer):
     def tool_list(self, children: List[Any]) -> ast.ToolList:
         return ast.ToolList(tools=children)
 
-    def tool_spec(self, children: List[Any]) -> ast.ToolSpec:
-        return ast.ToolSpec(name=children[0].name)
+    def tool_spec(self, children: List[Any]) -> Union[ast.ToolSpec, ast.AgentRouting]:
+        if hasattr(children[0], 'name'):
+            # Simple identifier token
+            return ast.ToolSpec(name=children[0].name)
+        else:
+            # AgentRouting object
+            return children[0]
 
     def agent_routing(self, children: List[Any]) -> ast.AgentRouting:
         tool_name, agent_list = children
@@ -178,26 +191,19 @@ class AgenticScriptTransformer(Transformer):
         return [child.name for child in children]
 
     def if_statement(self, children: List[Any]) -> ast.IfStatement:
-        if len(children) == 2:
-            # if without else
-            condition, then_statements = children
-            # Ensure then_statements is a list
-            if not isinstance(then_statements, list):
-                then_statements = [then_statements]
-            return ast.IfStatement(condition=condition, then_statements=then_statements)
-        else:
-            # if with else
-            condition, then_statements, else_statements = children
-            # Ensure statements are lists
-            if not isinstance(then_statements, list):
-                then_statements = [then_statements]
-            if not isinstance(else_statements, list):
-                else_statements = [else_statements]
-            return ast.IfStatement(
-                condition=condition,
-                then_statements=then_statements,
-                else_statements=else_statements
-            )
+        # First child is always the condition
+        condition = children[0]
+
+        # The rest are statements - we need to figure out which are then_statements vs else_statements
+        # For now, assume no else clause and all remaining are then_statements
+        # TODO: Handle else clause properly when we encounter it
+        then_statements = children[1:]
+
+        return ast.IfStatement(
+            condition=condition,
+            then_statements=then_statements,
+            else_statements=None
+        )
 
     def condition(self, children: List[Any]) -> ast.ASTNode:
         return children[0]
