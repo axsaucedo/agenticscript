@@ -1,0 +1,71 @@
+// AgenticScript Grammar for Lark Parser
+// Phase 1: Basic syntax, agent spawning, property assignment
+
+start: statement*
+
+// Statements
+statement: agent_declaration
+         | property_assignment
+         | print_statement
+         | expression_statement
+
+// Agent declarations: agent a = spawn Agent{ openai/gpt-4o }
+agent_declaration: "agent" IDENTIFIER "=" "spawn" agent_constructor
+
+agent_constructor: "Agent" "{" agent_config "}"
+
+agent_config: model_spec ("," config_pair)*
+
+model_spec: MODEL_PATH
+
+config_pair: IDENTIFIER ":" value
+
+// Property assignment: *b->goal = "Gives random reply"
+property_assignment: "*" IDENTIFIER "->" IDENTIFIER "=" value
+
+// Print statement: print(a.status)
+print_statement: "print" "(" expression ")"
+
+// Expression statement
+expression_statement: expression
+
+// Expressions
+expression: property_access
+          | method_call
+          | value
+          | IDENTIFIER
+
+property_access: IDENTIFIER "." IDENTIFIER
+
+method_call: IDENTIFIER "." IDENTIFIER "(" arguments? ")"
+
+arguments: value ("," value)*
+
+// Values
+value: string
+     | number
+     | boolean
+     | list
+     | dict
+
+string: ESCAPED_STRING
+number: SIGNED_NUMBER
+boolean: "true" | "false"
+
+list: "[" (value ("," value)*)? "]"
+dict: "{" (dict_pair ("," dict_pair)*)? "}"
+dict_pair: (IDENTIFIER | string) ":" value
+
+// Terminals
+IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9_]*/
+MODEL_PATH: /[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+/
+ESCAPED_STRING: /\"([^\"\\]|\\.)*\"/
+
+// Import common terminals
+%import common.SIGNED_NUMBER
+%import common.WS
+%import common.NEWLINE
+
+// Ignore whitespace and newlines
+%ignore WS
+%ignore NEWLINE
