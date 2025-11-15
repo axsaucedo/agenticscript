@@ -142,16 +142,27 @@ class AgenticScriptTransformer(Transformer):
         return ast.ImportList(imports=imports)
 
     def tool_assignment(self, children: List[Any]) -> ast.ToolAssignment:
-        # children: agent_name, operator, tool_list
-        agent_name, operator, tool_list = children
+        if len(children) == 3:
+            # agent_name, operator, tool_list
+            agent_name, operator, tool_list = children
+            op = operator if isinstance(operator, str) else "="
+        elif len(children) == 2:
+            # agent_name, tool_list (operator removed by Lark)
+            agent_name, tool_list = children
+            op = "="
+        else:
+            raise ValueError(f"Unexpected number of children in tool_assignment: {len(children)}")
+
         return ast.ToolAssignment(
             agent_name=agent_name.name,
-            operator=operator,
+            operator=op,
             tool_list=tool_list
         )
 
     def tool_operator(self, children: List[Any]) -> str:
-        return children[0].value  # "=" or "+="
+        # Lark removes literal tokens, so we need to infer from context
+        # This will be handled by the parent rule
+        return children[0] if children else "="
 
     def tool_list(self, children: List[Any]) -> ast.ToolList:
         return ast.ToolList(tools=children)
@@ -170,10 +181,18 @@ class AgenticScriptTransformer(Transformer):
         if len(children) == 2:
             # if without else
             condition, then_statements = children
+            # Ensure then_statements is a list
+            if not isinstance(then_statements, list):
+                then_statements = [then_statements]
             return ast.IfStatement(condition=condition, then_statements=then_statements)
         else:
             # if with else
             condition, then_statements, else_statements = children
+            # Ensure statements are lists
+            if not isinstance(then_statements, list):
+                then_statements = [then_statements]
+            if not isinstance(else_statements, list):
+                else_statements = [else_statements]
             return ast.IfStatement(
                 condition=condition,
                 then_statements=then_statements,
@@ -205,7 +224,8 @@ class AgenticScriptTransformer(Transformer):
             return children[0]
 
     def comparison_operator(self, children: List[Any]) -> str:
-        return children[0].value
+        # Lark removes literal tokens, so this might be empty
+        return children[0] if children else "=="
 
     def f_string(self, children: List[Any]) -> ast.FString:
         # Remove F_STRING_START and F_STRING_END, keep contents
