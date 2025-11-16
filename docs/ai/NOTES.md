@@ -194,3 +194,37 @@ Phase 2 delivers a fully functional distributed agent simulation system with:
 ✅ Enhanced debugging and introspection
 ✅ Message bus with delivery guarantees
 ✅ Performance monitoring and statistics
+
+## Comment Syntax Standardization - 2024-11-16
+
+### Issue Identified
+During documentation review, discovered inconsistency in comment syntax across the codebase:
+- **Grammar definition** (`grammar.lark`) was using `//` comments correctly
+- **Documentation** (README.md, PLAN-PHASE-2.md) was using `#` comments in AgenticScript examples
+- **Grammar parser** was missing comment token definition, causing potential parsing errors
+
+### Changes Implemented
+
+**Documentation Updates:**
+- Updated README.md: Converted ~15 AgenticScript code examples from `#` to `//` comments
+- Updated PLAN-PHASE-2.md: Converted ~40+ AgenticScript code examples from `#` to `//` comments
+- Updated CLAUDE.md: Added comment syntax documentation to Current Language Support
+
+**Grammar Enhancement:**
+- Added `COMMENT: /\/\/[^\n]*/` terminal definition to grammar.lark
+- Added `%ignore COMMENT` directive to properly handle comments during parsing
+- Ensures AgenticScript code with `//` comments parses correctly
+
+**Testing & Validation:**
+- Verified REPL correctly parses and executes code with `//` comments
+- Ran comprehensive test suite to ensure no regressions
+- All core tests pass: parser, interpreter, REPL, imports/tools
+
+### Result
+AgenticScript now has consistent `//` comment syntax throughout:
+- ✅ Grammar correctly defines and ignores `//` comments
+- ✅ All documentation examples use `//` comments
+- ✅ REPL and parser handle comments properly
+- ✅ C-like comment syntax aligns with modern language expectations
+
+This standardization eliminates confusion between Python-style `#` comments and AgenticScript syntax, providing a clean separation between implementation language (Python) and AgenticScript language features.

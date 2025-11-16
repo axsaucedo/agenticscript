@@ -61,12 +61,12 @@ Create a file called `hello_agents.as`:
 ```zig
 import agenticscript.stdlib.tools { WebSearch, AgentRouting }
 
-# Spawn multiple agents with different capabilities
+// Spawn multiple agents with different capabilities
 agent coordinator = spawn Agent{ openai/gpt-4o }
 agent researcher = spawn Agent{ claude/sonnet }
 agent analyzer = spawn Agent{ gemini/pro }
 
-# Configure agent goals and tools
+// Configure agent goals and tools
 *coordinator->goal = "Coordinate research and analysis tasks"
 *researcher->goal = "Research information using web search"
 *analyzer->goal = "Analyze research data"
@@ -74,7 +74,7 @@ agent analyzer = spawn Agent{ gemini/pro }
 *coordinator->tools = { AgentRouting{ researcher, analyzer } }
 *researcher->tools = { WebSearch }
 
-# Inter-agent communication
+// Inter-agent communication
 coordination_response = coordinator.ask("What is your current status?")
 print("Coordinator status:")
 print(coordination_response)
@@ -152,10 +152,10 @@ Available debug commands:
 ### Agent Declaration and Management
 
 ```zig
-# Spawn an agent with a specific model
+// Spawn an agent with a specific model
 agent myAgent = spawn Agent{ openai/gpt-4o }
 
-# Set agent properties
+// Set agent properties
 *myAgent->goal = "Process user requests"
 *myAgent->temperature = 0.7
 *myAgent->max_tokens = 1000
@@ -164,13 +164,13 @@ agent myAgent = spawn Agent{ openai/gpt-4o }
 ### Tool Assignment and Usage
 
 ```zig
-# Import tools from stdlib
+// Import tools from stdlib
 import agenticscript.stdlib.tools { WebSearch, Calculator }
 
-# Assign tools to agents
+// Assign tools to agents
 *myAgent->tools = { WebSearch, Calculator }
 
-# Check tool availability and execute
+// Check tool availability and execute
 if myAgent.has_tool("WebSearch") {
     result = myAgent.execute_tool("WebSearch", "latest AI research")
     print(result)
@@ -180,27 +180,27 @@ if myAgent.has_tool("WebSearch") {
 ### Inter-Agent Communication
 
 ```zig
-# Synchronous communication (ask/response)
+// Synchronous communication (ask/response)
 response = agent1.ask("What is your status?")
 
-# Asynchronous communication (fire and forget)
+// Asynchronous communication (fire and forget)
 agent2.tell("Process this data")
 
-# Agent routing for coordination
+// Agent routing for coordination
 *coordinator->tools = { AgentRouting{ worker1, worker2, worker3 } }
 ```
 
 ### Control Flow and Logic
 
 ```zig
-# Conditional execution
+// Conditional execution
 if agent.status == "idle" {
     agent.tell("Start processing")
 } else {
     print("Agent is busy")
 }
 
-# Boolean expressions
+// Boolean expressions
 if agent.has_tool("WebSearch") and agent.status == "ready" {
     search_result = agent.execute_tool("WebSearch", "query")
 }
@@ -213,13 +213,13 @@ if agent.has_tool("WebSearch") and agent.status == "ready" {
 ```zig
 import agenticscript.stdlib.tools { WebSearch, AgentRouting }
 
-# Create specialized agents
+// Create specialized agents
 agent research_coordinator = spawn Agent{ openai/gpt-4o }
 agent web_researcher = spawn Agent{ claude/sonnet }
 agent data_analyst = spawn Agent{ gemini/pro }
 agent report_writer = spawn Agent{ openai/gpt-4o }
 
-# Configure the pipeline
+// Configure the pipeline
 *research_coordinator->goal = "Coordinate research pipeline"
 *research_coordinator->tools = { AgentRouting{ web_researcher, data_analyst, report_writer } }
 
@@ -227,11 +227,11 @@ agent report_writer = spawn Agent{ openai/gpt-4o }
 *data_analyst->goal = "Analyze research data"
 *report_writer->goal = "Generate research reports"
 
-# Execute the pipeline
+// Execute the pipeline
 if research_coordinator.has_tool("AgentRouting") {
     research_coordinator.tell("Start research on quantum computing")
 
-    # Check pipeline status
+    // Check pipeline status
     status = research_coordinator.ask("What is the pipeline status?")
     print(status)
 }

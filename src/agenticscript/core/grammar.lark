@@ -121,6 +121,10 @@ F_STRING_TEXT: /[^{\"\\]+/
 %import common.WS
 %import common.NEWLINE
 
-// Ignore whitespace and newlines
+// Comment terminal - supports // style comments
+COMMENT: /\/\/[^\n]*/
+
+// Ignore whitespace, newlines, and comments
 %ignore WS
 %ignore NEWLINE
+%ignore COMMENT

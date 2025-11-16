@@ -62,6 +62,7 @@ AgenticScript currently supports:
 - Property access: `a.status`, `a.model`
 - Print statements: `print(a.status)`
 - Basic expressions and values (strings, numbers, booleans)
+- Comments: `// This is a comment` (double-slash style, C-like syntax)
 
 ## Development Workflow
 
