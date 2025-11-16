@@ -74,11 +74,6 @@ agent analyzer = spawn Agent{ gemini/pro }
 *coordinator->tools = { AgentRouting{ researcher, analyzer } }
 *researcher->tools = { WebSearch }
 
-# Implement coordination logic
-if coordinator.has_tool("AgentRouting") {
-    print("Coordinator ready for task routing")
-}
-
 # Inter-agent communication
 coordination_response = coordinator.ask("What is your current status?")
 print("Coordinator status:")
@@ -92,6 +87,41 @@ Run your program:
 
 ```bash
 uv run agenticscript hello_agents.as
+```
+
+## Interactive REPL
+
+AgenticScript includes a rich terminal-based REPL with debugging capabilities:
+
+```bash
+> agenticscript
+
+AgenticScript REPL v0.1.0
+Type 'help debug' for debug commands
+
+🤖> <your commands>
+```
+
+Available debug commands:
+- `debug agents` - Show all active agents and their status
+- `debug tools` - Display tool registry and usage statistics
+- `debug messages` - View message bus performance metrics
+- `debug flow` - Visualize agent communication patterns
+- `debug stats` - Comprehensive system statistics
+- `debug dump <agent>` - Detailed agent information
+
+### Example Debug Agents
+
+```bash
+🤖> debug agents
+                               Active Agents
+┏━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ID        ┃ Name        ┃ Model         ┃ Status ┃ Goal                 ┃
+┡━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━┩
+│ agent_001 │ coordinator │ openai/gpt-4o │ idle   │ Coordinate resear... │
+│ agent_002 │ researcher  │ claude/sonnet │ idle   │ Research informat... │
+│ agent_003 │ analyzer    │ gemini/pro    │ idle   │ Analyze research ... │
+└───────────┴─────────────┴───────────────┴────────┴──────────────────────┘
 ```
 
 ## Features
@@ -221,22 +251,6 @@ if math_agent.has_tool("Calculator") {
     print(result)
 }
 ```
-
-## Interactive REPL
-
-AgenticScript includes a rich terminal-based REPL with debugging capabilities:
-
-```bash
-uv run agenticscript
-```
-
-Available debug commands:
-- `debug agents` - Show all active agents and their status
-- `debug tools` - Display tool registry and usage statistics
-- `debug messages` - View message bus performance metrics
-- `debug flow` - Visualize agent communication patterns
-- `debug stats` - Comprehensive system statistics
-- `debug dump <agent>` - Detailed agent information
 
 ## Architecture
 
