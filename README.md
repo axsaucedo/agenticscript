@@ -99,7 +99,7 @@ AgenticScript includes a rich terminal-based REPL with debugging capabilities:
 AgenticScript REPL v0.1.0
 Type 'help debug' for debug commands
 
-🤖> <your commands>
+🤖> <your agenticscript code>
 ```
 
 Available debug commands:
