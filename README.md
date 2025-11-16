@@ -74,11 +74,12 @@ agent analyzer = spawn Agent{ gemini/pro }
 *coordinator->tools = { AgentRouting{ researcher, analyzer } }
 *researcher->tools = { WebSearch }
 
-// Inter-agent communication
+// Inter-agent synchronous communication
 coordination_response = coordinator.ask("What is your current status?")
 print("Coordinator status:")
 print(coordination_response)
 
+// Inter-agent asynchronous communication
 researcher.tell("Start research on AI trends")
 analyzer.tell("Prepare for data analysis")
 ```
